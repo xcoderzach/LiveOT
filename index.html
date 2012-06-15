@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+  <head></head>
+  <body>
+    <textarea id = "editBox"></textarea>
+    <script src = "/modules/modules/node_modules/AssetPipeline/lib/client/require.js"></script>
+    <script src = "/socket.io/socket.io.js"></script>
+    <script src = "/modules/node_modules/sax/lib/sax.js"></script>
+    <script src = "/modules/transform.js"></script>
+    <script src = "http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+    <script>
+      var socket = io.connect('http://localhost')
+        , ot = require("/transform.js")
+        , prevSeq = []
+
+      var config = {} 
+      socket.on("init", function(c) {
+        config = c
+        prevSeq = c.document
+        $("#editBox").val(ot.stringifySequence(c.document))
+      })
+      socket.on("sync", function(callback) {
+        ot.getSequenceFromXML($("#editBox").val(), function(seq) {
+          var ops = ot.getDiffOperations(prevSeq, seq, config.clientId)
+          prevSeq = seq
+          callback(config.clientId, ops) 
+        })
+      })
+      socket.on("update", function(newOps, doc) {
+        var val = $("#editBox").val()
+        ot.getSequenceFromXML(val, function(changedSeq) {
+          var ops = ot.getDiffOperations(prevSeq, changedSeq, config.clientId)
+          var opsToApply = ot.transform(ops, newOps)
+          prevSeq = ot.apply(prevSeq, newOps)
+          if(opsToApply.length < ) {}
+          $("#editBox").val(ot.stringifySequence(ot.apply(changedSeq, opsToApply))) 
+        })
+      })
+    </script>
+  </body>
+</html>
