@@ -165,6 +165,11 @@ var transform = module.exports.transform = function(s1, s2) {
       seq2.shift()
     }
   }
+  for(var i = 0 ; i < seq1.length ; i++) {
+    if(seq1[i].type !== "delete") {
+      newSeq.push({ type: "retain" }) 
+    }
+  }
   ;[].push.apply(newSeq, seq2)
   return newSeq
 }
@@ -230,8 +235,8 @@ var removeOwnOperations = module.exports.removeOwnOperations = function(seq, cli
   var newSeq = []
   for(var i = 0 ; i < seq.length ; i++) {
     if(seq[i].type === "retain" 
-    || seq[i].clientId && seq[i].clientId !== clientId
-    || seq[i].clientIds && seq[i].clientIds.indexOf(clientId) === -1) {
+    || typeof seq[i].clientId !== "undefined" && seq[i].clientId !== clientId
+    || typeof seq[i].clientIds !== "undefined" && seq[i].clientIds.indexOf(clientId) === -1) {
       newSeq.push(seq[i])
     } else if(seq[i].type === "insert") {
       newSeq.push({type: "retain"})

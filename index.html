@@ -18,22 +18,29 @@
         config = c
         prevSeq = c.document
         $("#editBox").val(ot.stringifySequence(c.document))
+        console.log(c.clientId)
       })
-      socket.on("sync", function(callback) {
+      socket.on("sync", function(theirOps, callback) {
         ot.getSequenceFromXML($("#editBox").val(), function(seq) {
-          var ops = ot.getDiffOperations(prevSeq, seq, config.clientId)
-          prevSeq = seq
-          callback(config.clientId, ops) 
-        })
-      })
-      socket.on("update", function(newOps, doc) {
-        var val = $("#editBox").val()
-        ot.getSequenceFromXML(val, function(changedSeq) {
-          var ops = ot.getDiffOperations(prevSeq, changedSeq, config.clientId)
-          var opsToApply = ot.transform(ops, newOps)
-          prevSeq = ot.apply(prevSeq, newOps)
-          if(opsToApply.length < ) {}
-          $("#editBox").val(ot.stringifySequence(ot.apply(changedSeq, opsToApply))) 
+          var ourOps = ot.getDiffOperations(prevSeq, seq, config.clientId)
+            , opsToSend
+            , opsToApply
+
+          if(theirOps) {
+            //TODO optimize xform function by generating BOTH in one transform 
+            opsToApply = ot.transform(ourOps, theirOps)
+            opsToSend = ot.transform(theirOps, ourOps)
+
+            prevSeq = ot.apply(seq, opsToApply)
+          } else { 
+            prevSeq = seq
+            opsToSend = ourOps
+          }
+          var newValue = ot.stringifySequence(prevSeq)
+          if(newValue !== $("#editBox").val()) {
+            $("#editBox").val(ot.stringifySequence(prevSeq))
+          }
+          callback(opsToSend) 
         })
       })
     </script>

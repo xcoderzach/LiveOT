@@ -12,6 +12,7 @@ var express         = require("express")
   , document        = []
   , AssetPipe       = require("AssetPipeline/lib/index")
   , ModuleProcessor = require("AssetPipeline/lib/processors/module")
+  , _               = require("underscore")
   , assetPipe       = new AssetPipe()
 
 
@@ -20,6 +21,7 @@ assetPipe.script()
 assetPipe.script()
   .root(__dirname)
   .addFiles("sax/lib/sax")
+  .addFiles("underscore")
   .addFiles(__dirname + "/transform.js")
   .process(ModuleProcessor(__dirname))
 
@@ -33,45 +35,73 @@ app.get('/', function(req, res) {
 app.listen(3000)
 
 var sio = io.listen(app)
-  , clientResponses = []
-  , clientsResponded = 0
+  , clients = []
 
 sio.set('log level', 0)
 
-var syncing = false
-function allClientsResponded() {
-  setTimeout(function() {
-    if(clientResponses[0] && clientResponses[1]) {
-      var merged = ot.merge(clientResponses[0].ops, clientResponses[1].ops)
-      document = ot.apply(document, merged)
-      clientResponses[0].socket.emit("update", ot.removeOwnOperations(merged, clientResponses[0].cid), document)
-      clientResponses[1].socket.emit("update", ot.removeOwnOperations(merged, clientResponses[1].cid), document)
+function mergeOps() {
+  var opsList = _(_(clients).pluck("ops")).filter(function(o) {
+    return o
+  })
+  if(!opsList.length) {
+    return
+  }
+  
+  return _(opsList).reduce(function(mergedOps, ops) {
+    if(ops) {
+      return ot.merge(mergedOps, ops)
     }
-    clientResponses = []
-    clientsResponded = 0
-    syncing = false
-  }, 500)
+    return mergedOps
+  }) 
 }
 
-setInterval(function() {
-  var clients = sio.sockets.clients()
-    , clientsSyncing = clients.length
-  if(!syncing && clientsSyncing > 0) {
-    syncing = true
-    clients.forEach(function (socket) {
-      socket.emit("sync", function(clientId, operations) {
-        clientResponses.push({ ops: operations, socket: socket, cid: clientId})
-        if(++clientsResponded === clients.length) {
-          allClientsResponded()
-        }
-      })  
-    })
+function sync() {
+
+  if(clients.length === 0) {
+    setTimeout(sync, 200)
+    return
   }
-}, 200)
+
+  var merged = mergeOps()
+  if(merged) {
+    document = ot.apply(document, merged)
+  }
+
+    var clientsResponded = 0
+      , clientsSyncing = clients.length
+      , startTime = (new Date).getTime()
+
+
+  clients.forEach(function (client) {
+    var sendOps
+    if(merged) {
+      sendOps = ot.removeOwnOperations(merged, client.id)
+    }
+    client.disconnect = function() {
+      if(clientsResponded === --clientsSyncing) {
+        setTimeout(sync, 10)
+      }
+    }
+    client.socket.emit("sync", sendOps, function(operations) {
+      client.ops = operations
+      if(++clientsResponded === clientsSyncing) {
+        setTimeout(sync, 10)
+      }
+    })  
+  })
+}
+
+sync()
 
 sio.sockets.on('connection', function (socket) {
-
+  var client = { socket: socket, id: clientId }
+  clients.push(client)
   socket.emit('init', { clientId: clientId, document: document })
   clientId++
-  socket.on('disconnect', function() {})
+  socket.on('disconnect', function() {
+    var c = clients.splice(clients.indexOf(client), 1)
+    if(typeof c.disconnect === "function") {
+      c.disconnect()
+    }
+  })
 })

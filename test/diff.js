@@ -23,9 +23,9 @@ describe("when I fuzz test", function() {
         , str2 = randomOps(str1)
         , str3 = randomOps(str1)
 
-      ot.getSequenceFromXML("<a>" + str1 + "</a>", function(seq) {
-        ot.getSequenceFromXML("<a>" + str2 + "</a>", function(seq1) {
-          ot.getSequenceFromXML("<a>" + str3 + "</a>", function(seq2) {
+      ot.getSequenceFromXML("", function(seq) {
+        ot.getSequenceFromXML("a", function(seq1) {
+          ot.getSequenceFromXML("", function(seq2) {
             var diff1 = ot.getDiffOperations(seq, seq1, 1)
             var diff2 = ot.getDiffOperations(seq, seq2, 2)
 
@@ -38,6 +38,7 @@ describe("when I fuzz test", function() {
 
             var mergeStr = ot.stringifySequence(ot.apply(seq, merged))
 
+            console.log(ot.stringifySequence(res2))
             ot.stringifySequence(res2).should.equal(mergeStr)
             ot.stringifySequence(res2).should.equal(ot.stringifySequence(res4))
 
