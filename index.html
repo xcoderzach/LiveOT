@@ -20,7 +20,7 @@
         prevSeq = c.document
         $("#editBox").html(ot.stringifySequence(c.document))
       })
-      socket.on("sync", function(theirOps, callback) {
+      socket.on("sync", function(theirOps, respondedClients, callback) {
         ot.getSequenceFromXML($("#editBox").html(), function(seq) {
           var ourOps = ot.getDiffOperations(prevSeq, seq, config.clientId)
             , opsToSend

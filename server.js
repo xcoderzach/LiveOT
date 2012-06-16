@@ -40,31 +40,40 @@ var sio = io.listen(app)
 sio.set('log level', 0)
 
 function mergeOps() {
-  var opsList = _(_(clients).pluck("ops")).filter(function(o) {
-    return o
-  })
-  if(!opsList.length) {
-    return
-  }
-  
-  return _(opsList).reduce(function(mergedOps, ops) {
-    if(ops) {
-      return ot.merge(mergedOps, ops)
+  //remove clients who have not sent us ops
+  var opsList = []
+    , clientsWithOps = []
+    , ops
+  var clientsWithOperations = _(clients).each(function(c) {
+    if(c.ops) {
+      opsList.push(c.ops)
+      clientsWithOps.push(c.id)
     }
-    return mergedOps
-  }) 
+  })
+  if(opsList.length !== 0) {
+    ops = _(opsList).reduce(function(mergedOps, ops) {
+      if(ops) {
+        return ot.merge(mergedOps, ops)
+      } else {
+        return mergedOps
+      }
+    }) 
+  }
+  return { ops: ops, respondedClients: clientsWithOps }
 }
+var numSyncs = 0
 
 function sync() {
-
+  console.log("syncing")
+  var thisSync = ++numSyncs
   if(clients.length === 0) {
     setTimeout(sync, 200)
     return
   }
 
   var merged = mergeOps()
-  if(merged) {
-    document = ot.apply(document, merged)
+  if(merged.ops) {
+    document = ot.apply(document, merged.ops)
   }
 
     var clientsResponded = 0
@@ -74,21 +83,31 @@ function sync() {
 
   clients.forEach(function (client) {
     var sendOps
-    if(merged) {
-      sendOps = ot.removeOwnOperations(merged, client.id)
+    //keep track of which round of syncs this callback is for
+      , mySyncNumber = numSyncs
+    if(merged.ops) {
+      sendOps = ot.removeOwnOperations(merged.ops, client.id)
     }
-    client.disconnect = function() {
-      console.log("got called")
-      if(clientsResponded === --clientsSyncing) {
-        setTimeout(sync, 10)
+    client.socket.emit("sync", sendOps, merged.respondedClients, function(operations) {
+      //this client responded too late, latency may be too high ( > 600 )
+      if(thisSync !== numSyncs) {
+        return
       }
-    }
-    client.socket.emit("sync", sendOps, function(operations) {
+      console.log("got response")
       client.ops = operations
       if(++clientsResponded === clientsSyncing) {
-        setTimeout(sync, 10)
+        setTimeout(sync, 100)
       }
     })  
+  })
+  //if clients take longer than 600ms to respond, force the 
+  //application of operations
+  setTimeout(600, function() {
+    //we're still waiting for someone to respond...drop em
+   if(thisSync === numSyncs) {
+     console.log("restarting")
+      sync()
+    }
   })
 }
 
@@ -100,9 +119,8 @@ sio.sockets.on('connection', function (socket) {
   socket.emit('init', { clientId: clientId, document: document })
   clientId++
   socket.on('disconnect', function() {
-    var c = clients.splice(clients.indexOf(client), 1)
-    if(typeof c.disconnect === "function") {
-      c.disconnect()
-    }
+    clients.splice(clients.indexOf(client), 1)
+    //force sync after disconnect
+    sync()
   })
 })
