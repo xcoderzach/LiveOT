@@ -2,7 +2,8 @@
 <html>
   <head></head>
   <body>
-    <textarea id = "editBox"></textarea>
+    <button id = "boldify">boldify</button>
+    <div id = "editBox" style = "border: 1px solid black; width:100%; height: 500px;" contenteditable></div>
     <script src = "/modules/modules/node_modules/AssetPipeline/lib/client/require.js"></script>
     <script src = "/socket.io/socket.io.js"></script>
     <script src = "/modules/node_modules/sax/lib/sax.js"></script>
@@ -17,11 +18,10 @@
       socket.on("init", function(c) {
         config = c
         prevSeq = c.document
-        $("#editBox").val(ot.stringifySequence(c.document))
-        console.log(c.clientId)
+        $("#editBox").html(ot.stringifySequence(c.document))
       })
       socket.on("sync", function(theirOps, callback) {
-        ot.getSequenceFromXML($("#editBox").val(), function(seq) {
+        ot.getSequenceFromXML($("#editBox").html(), function(seq) {
           var ourOps = ot.getDiffOperations(prevSeq, seq, config.clientId)
             , opsToSend
             , opsToApply
@@ -37,11 +37,14 @@
             opsToSend = ourOps
           }
           var newValue = ot.stringifySequence(prevSeq)
-          if(newValue !== $("#editBox").val()) {
-            $("#editBox").val(ot.stringifySequence(prevSeq))
+          if(newValue !== $("#editBox").html()) {
+            $("#editBox").html(ot.stringifySequence(prevSeq))
           }
           callback(opsToSend) 
         })
+      })
+      $("#boldify").click(function() {
+        document.execCommand("bold", null, null)
       })
     </script>
   </body>

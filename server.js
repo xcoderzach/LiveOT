@@ -78,6 +78,7 @@ function sync() {
       sendOps = ot.removeOwnOperations(merged, client.id)
     }
     client.disconnect = function() {
+      console.log("got called")
       if(clientsResponded === --clientsSyncing) {
         setTimeout(sync, 10)
       }

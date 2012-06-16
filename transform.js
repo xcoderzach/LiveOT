@@ -26,6 +26,8 @@ var stringifySequence = module.exports.stringifySequence = function(seq) {
   }).join("")
 }
 
+
+
 var getSequenceFromXML = module.exports.getSequenceFromXML = function(xml, callback) {
   if(xml === "") {
     return callback([])
@@ -34,22 +36,24 @@ var getSequenceFromXML = module.exports.getSequenceFromXML = function(xml, callb
     , seq = []
 
   parser.ontext = function(text) {
-    ;[].push.apply(seq, text.split('').map(function(character) {
+    //TODO check for &amp; type entities and make them a single component, so they
+    //dont get sliced and diced by xform or merge
+    seq = seq.concat(text.split('').map(function(character) {
       return { type: "character", character: character }
     }))
   }
 
   parser.onopentag = function(node) {
-    var tag = "<" + node.name
-    for (var i in tag.attributes) {
-      tag += " " + i + ' = "' + entity(tag.attributes[i]) + '"'
+    var tag = "<" + node.name.toLowerCase()
+    for (var i in node.attributes) {
+      tag += " " + i.toLowerCase() + '="' + node.attributes[i] + '"'
     }
     tag += ">"
     seq.push({type: "open", tag: tag, tagType: node.name })
   }
 
   parser.onclosetag = function(name) {
-    var tag = "</" + name + ">"
+    var tag = "</" + name.toLowerCase() + ">"
     seq.push({type: "close", tag: tag, tagType: name })
   }
 
@@ -66,10 +70,61 @@ function compare(item1, item2) {
       || item1.tag && item1.tag === item2.tag
 }
 
-/**
- * Do this the lazy way, compute the common prefix and the common suffix,
- * then delete everything in between and insert the new stuff
- */
+function getOp(operation, component) {
+  if(component.type === "open") {
+    return { type: operation, tag: component.tag, tagType: component.tagType, open: true }
+  } else if(component.type === "close") {
+    return { type: operation, tag: component.tag, tagType: component.tagType, open: false }
+  }
+  return { type: operation, character: component.character }
+}
+ 
+function getLevenshteinOperations(oldStr, newStr) {
+  var distanceMatrix = []
+    , ins, del, sub, minOp, i, j
+
+  for(i = 0 ; i <= oldStr.length ; i++) {
+    if(i > 0) {
+      distanceMatrix[i] = [{ dist: i, ops: distanceMatrix[i - 1][0].ops.concat(getOp("delete", oldStr[i - 1])) }]
+    } else {
+      distanceMatrix[i] = [{ dist: i, ops: [] }]
+    }
+  }
+  for(j = 0 ; j <= newStr.length ; j++) {
+    if(j > 0) {
+      distanceMatrix[0][j] = { dist: j, ops: distanceMatrix[0][j - 1].ops.concat(getOp("insert", newStr[j - 1])) }
+    } else {
+      distanceMatrix[0][j] = { dist: j, ops: [] }
+    }
+  }
+
+  for(i = 1 ; i <= oldStr.length ; i++) {
+    for(j = 1 ; j <= newStr.length ; j++) {
+      distanceMatrix[i][j] = {}
+      del = distanceMatrix[i - 1][j]
+      ins = distanceMatrix[i][j - 1]
+      sub = distanceMatrix[i - 1][j - 1]
+      minOp = Math.min(del.dist, sub.dist, ins.dist)
+      //TODO use compare()
+      if(typeof oldStr[i - 1].character !== "undefined" && oldStr[i - 1].character === newStr[j - 1].character
+      || typeof oldStr[i - 1].tag !== "undefined" && oldStr[i - 1].tag === newStr[j - 1].tag) {
+        distanceMatrix[i][j].dist = sub.dist
+        distanceMatrix[i][j].ops = sub.ops.concat({ type: "retain" })
+      } else if(minOp === del.dist) {
+        distanceMatrix[i][j].dist = del.dist + 1
+        distanceMatrix[i][j].ops = del.ops.concat(getOp("delete", oldStr[i - 1]))
+      } else if(minOp === ins.dist) {
+        distanceMatrix[i][j].dist = ins.dist + 1
+        distanceMatrix[i][j].ops = ins.ops.concat(getOp("insert", newStr[j - 1]))
+      } else if(minOp === sub.dist) {
+        distanceMatrix[i][j].dist = sub.dist + 1
+        distanceMatrix[i][j].ops = sub.ops.concat(getOp("delete", oldStr[i - 1]), getOp("insert", newStr[j - 1]))
+      }
+    }
+  }
+  return distanceMatrix[i-1][j-1].ops
+}
+
 var getDiffOperations = module.exports.getDiffOperations = function(seq1, seq2, clientId) {
   var prefix = 0
     , suffix = 0
@@ -84,27 +139,7 @@ var getDiffOperations = module.exports.getDiffOperations = function(seq1, seq2, 
      && suffix + prefix < Math.min(seq1.length, seq2.length)) { 
     suffix++
   }
-
-  for(i = prefix ; i < seq1.length - suffix ; i++) {
-    if(seq1[i].type === "open") {
-      diff.push({ type: "delete", tag: seq1[i].tag, tagType: seq1[i].tagType })
-    } else if(seq1[i].type === "close") {
-      diff.push({ type: "delete", tag: seq1[i].tag, tagType: seq1[i].tagType })
-    } else if(seq1[i].type === "character") {
-      diff.push({ type: "delete", character: seq1[i].character })
-    } 
-  }
-  for(i = prefix ; i < seq2.length - suffix ; i++) {
-    if(seq2[i].type === "open") {
-      diff.push({ type: "insert", tag: seq2[i].tag, tagType: seq2[i].tagType })
-    }
-    if(seq2[i].type === "close") {
-      diff.push({ type: "insert", tag: seq2[i].tag, tagType: seq2[i].tagType })
-    }
-    if(seq2[i].type === "character") {
-      diff.push({ type: "insert", character: seq2[i].character })
-    }
-  }
+  diff = diff.concat(getLevenshteinOperations(seq1.slice(prefix, -suffix || undefined), seq2.slice(prefix, -suffix || undefined)))
   for(i = 0 ; i < suffix ; i++) {
     diff.push({type: "retain"})
   }
@@ -180,6 +215,38 @@ var merge = module.exports.merge = function(seq1, seq2) {
   seq1 = seq1.slice(0)
   seq2 = seq2.slice(0)
 
+  var tagStack = []
+    , tagsToClose = []
+
+  function closeMismatchTags(op) {
+    var tag
+    while(op.clientId !== (tag = tagStack.pop()).clientId && tag) {
+      tagsToClose.push(tag)
+      //clientId of -1 means op generated by the server
+      newSeq.push({ type: "insert", clientId: -1, tag: "</" + tag.tagType.toLowerCase() + ">", tagType: tag.tagType, open: false })
+    }
+  }
+
+  function reopenMismatchTags() {
+    var tag
+    while(tag = tagsToClose.pop()) {
+      newSeq.push(tag)
+    }
+  }
+
+  function handleInsert(op) {
+    if(op.open === true) {
+      tagStack.push(op)
+    } 
+    if(op.open === false) {
+      closeMismatchTags(op)
+    }
+    newSeq.push(op)
+    if(op.open === false) {
+      reopenMismatchTags()
+    } 
+  }
+
   while(seq1.length && seq2.length) {
     var op1 = seq1[0]
     var op2 = seq2[0]
@@ -189,10 +256,10 @@ var merge = module.exports.merge = function(seq1, seq2) {
       seq1.shift()
       seq2.shift()
     } else if(op1.type === "insert" && op2.type === "delete") {
-      newSeq.push(op1)
+      handleInsert(op1)
       seq1.shift()
     } else if(op1.type === "delete" && op2.type === "insert") {
-      newSeq.push(op2)
+      handleInsert(op2)
       seq2.shift()
     } else if(op1.type === "retain" && op2.type === "delete") {
       newSeq.push(op2)
@@ -203,18 +270,18 @@ var merge = module.exports.merge = function(seq1, seq2) {
       seq1.shift()
       seq2.shift()
     } else if(op1.type === "retain" && op2.type === "insert") {
-      newSeq.push(op2)
+      handleInsert(op2)
       seq2.shift()
     } else if(op1.type === "insert" && op2.type === "retain") {
-      newSeq.push(op1)
+      handleInsert(op1)
       seq1.shift()
     } else if(op1.type === "insert" && op2.type === "insert") {
       if(op1.clientId < op2.clientId) {
-        newSeq.push(op1)
-        newSeq.push(op2)
+        handleInsert(op1)
+        handleInsert(op2)
       } else {
-        newSeq.push(op2)
-        newSeq.push(op1)
+        handleInsert(op2)
+        handleInsert(op1)
       }
       seq1.shift()
       seq2.shift()
@@ -225,8 +292,8 @@ var merge = module.exports.merge = function(seq1, seq2) {
       seq2.shift()
     }
   }
-  ;[].push.apply(newSeq, seq1)
-  ;[].push.apply(newSeq, seq2)  
+  newSeq = newSeq.concat(seq1)
+  newSeq = newSeq.concat(seq2)
 
   return newSeq
 }

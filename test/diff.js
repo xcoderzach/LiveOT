@@ -23,9 +23,9 @@ describe("when I fuzz test", function() {
         , str2 = randomOps(str1)
         , str3 = randomOps(str1)
 
-      ot.getSequenceFromXML("", function(seq) {
-        ot.getSequenceFromXML("a", function(seq1) {
-          ot.getSequenceFromXML("", function(seq2) {
+      ot.getSequenceFromXML(str1, function(seq) {
+        ot.getSequenceFromXML(str2, function(seq1) {
+          ot.getSequenceFromXML(str3, function(seq2) {
             var diff1 = ot.getDiffOperations(seq, seq1, 1)
             var diff2 = ot.getDiffOperations(seq, seq2, 2)
 
@@ -34,12 +34,7 @@ describe("when I fuzz test", function() {
 
             var res3 = ot.apply(seq, diff2)
             var res4 = ot.apply(res3, ot.transform(diff2, diff1))
-            var merged = ot.merge(diff2, diff1)
 
-            var mergeStr = ot.stringifySequence(ot.apply(seq, merged))
-
-            console.log(ot.stringifySequence(res2))
-            ot.stringifySequence(res2).should.equal(mergeStr)
             ot.stringifySequence(res2).should.equal(ot.stringifySequence(res4))
 
             if(++j === 5000) {
@@ -83,4 +78,19 @@ describe("when I fuzz test", function() {
       })
     } 
   })
+  it("should generate valid markup when merging", function() {
+      ot.getSequenceFromXML("italic both bold", function(seq) {
+        ot.getSequenceFromXML("<i>italic both</i> bold", function(seq1) {
+          ot.getSequenceFromXML("italic <strong>both bold</strong>", function(seq2) {
+            var diff1 = ot.getDiffOperations(seq, seq1, 1)
+            var diff2 = ot.getDiffOperations(seq, seq2, 2)
+
+            var merged = ot.merge(diff1, diff2)
+
+            var mergeStr = ot.stringifySequence(ot.apply(seq, merged))
+            mergeStr.should.equal("<i>italic <strong>both</strong></i><strong> bold</strong>")
+          })
+        })
+      })
+  }) 
 })
