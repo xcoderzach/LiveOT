@@ -79,18 +79,18 @@ describe("when I fuzz test", function() {
     } 
   })
   it("should generate valid markup when merging", function() {
-      ot.getSequenceFromXML("italic both bold", function(seq) {
-        ot.getSequenceFromXML("<i>italic both</i> bold", function(seq1) {
-          ot.getSequenceFromXML("italic <strong>both bold</strong>", function(seq2) {
-            var diff1 = ot.getDiffOperations(seq, seq1, 1)
-            var diff2 = ot.getDiffOperations(seq, seq2, 2)
+    ot.getSequenceFromXML("italic both bold", function(seq) {
+      ot.getSequenceFromXML("<i>italic both</i> bold", function(seq1) {
+        ot.getSequenceFromXML("italic <strong>both bold</strong>", function(seq2) {
+          var diff1 = ot.getDiffOperations(seq, seq1, 1)
+          var diff2 = ot.getDiffOperations(seq, seq2, 2)
 
-            var merged = ot.merge(diff1, diff2)
+          var merged = ot.merge(diff1, diff2)
 
-            var mergeStr = ot.stringifySequence(ot.apply(seq, merged))
-            mergeStr.should.equal("<i>italic <strong>both</strong></i><strong> bold</strong>")
-          })
+          var mergeStr = ot.stringifySequence(ot.apply(seq, merged))
+          mergeStr.should.equal("<i>italic <strong>both</strong></i><strong> bold</strong>")
         })
       })
+    })
   }) 
 })
